@@ -13,16 +13,19 @@
 
 using namespace fantom;
 
+
 namespace {
 
-    class FieldsTutorialAlgorithm : public VisAlgorithm {
+    class FieldVisualizationAlgorithm : public VisAlgorithm {
 
     public:
         struct Options : public VisAlgorithm::Options {
             Options(fantom::Options::Control &control)
                     : VisAlgorithm::Options(control) {
-                add< Field< 3, Vector3 > >( "Field", "A 3D vector field", definedOn< Grid< 3 > >( Grid< 3 >::Points ) );
+                add < Function < Scalar >> ("Field", "A 3D vector field");
                 add<double>("threshold", "The time when to sample the field.", 0.0);
+                add<double>("radius", "The time when to sample the field.", 0.25);
+                add<bool>("scaleSpheres", "The time when to sample the field.", false);
                 add<Color>("color", "The color of the graphics.", Color(0.75, 0.75, 0.0));
             }
         };
@@ -34,38 +37,51 @@ namespace {
             }
         };
 
-        FieldsTutorialAlgorithm(InitData &data)
+        FieldVisualizationAlgorithm(InitData &data)
                 : VisAlgorithm(data) {
         }
 
         virtual void execute(const Algorithm::Options &options, const volatile bool &abortFlag) override {
 
-            std::shared_ptr< const Function< Vector3 > > function = options.get< Function< Vector3 > >( "Field" );
-
-
-            // if there is no input, do nothing
+            std::shared_ptr<const Function <Scalar> > function = options.get < Function < Scalar > > ("Field");
             if (!function) {
-                debugLog() << "Input Field not set." << std::endl;
+                debugLog() << "Input Field not set or supported." << std::endl;
                 return;
             }
+            std::shared_ptr<const Grid<3> > grid = std::dynamic_pointer_cast<const Grid<3>>(function->domain());
+
+            // if there is no input, do nothing
+
 
             std::string resourcePath = PluginRegistrationService::getInstance().getResourcePath("utils/Graphics");
             auto const &system = graphics::GraphicsSystem::instance();
 
-            double scale = options.get<double>("threshold");
+            double threshold = options.get<double>("threshold");
+            double radius = options.get<double>("radius");
+            bool scaleSpheres = options.get<bool>("scaleSpheres");
             Color color = options.get<Color>("color");
 
 
             auto performanceObjectRenderer = std::make_shared<graphics::ObjectRenderer>(system);
-            performanceObjectRenderer->reserve(graphics::ObjectRenderer::ObjectType::SPHERE, 18);
 
-            performanceObjectRenderer->addSphere(Point3(2.0, 0.0, 0.0), 0.25, color);
+            auto evaluator = function->makeDiscreteEvaluator();
+
+            performanceObjectRenderer->reserve(graphics::ObjectRenderer::ObjectType::SPHERE, grid->points().size());
+
+            for (size_t i = 0; i < grid->points().size(); i++) {
+                Point3 p = grid->points()[i];
+                double value = evaluator->value(i)[0];
+                if (value > threshold) {
+                    performanceObjectRenderer->addSphere(p, scaleSpheres ? value * radius : radius, color);
+                }
+            }
+
 
             setGraphics("field", performanceObjectRenderer->commit());
 
         }
     };
 
-    AlgorithmRegister <FieldsTutorialAlgorithm> dummy("Aufgabe3/Field",
-                                                      "Show vector field glyphs at cell centers.");
+    AlgorithmRegister <FieldVisualizationAlgorithm> dummy("Aufgabe3/Field",
+                                                          "Show vector field glyphs at cell centers.");
 } 
